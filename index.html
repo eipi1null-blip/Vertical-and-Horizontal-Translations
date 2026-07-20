@@ -1,0 +1,512 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Horizontal and Vertical Function Translations</title>
+  <style>
+    :root {
+      --blue: #62b9db;
+      --orange: #efa042;
+      --ink: #24252a;
+      --grid: #e4e4e4;
+      --grid-strong: #c7c7c7;
+      --panel: #eef3fb;
+      --purple: #6d3aa0;
+      --pink: #c73569;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      background: #fff;
+      color: var(--ink);
+      font-family: "Segoe UI", Arial, sans-serif;
+    }
+
+    .applet {
+      width: min(1200px, 100vw);
+      height: min(760px, 100vh);
+      min-height: 640px;
+      border: 2px solid #8d8d8d;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 320px;
+      overflow: hidden;
+      background: #fff;
+    }
+
+    .stage {
+      position: relative;
+      min-width: 0;
+      min-height: 0;
+      background: #fff;
+    }
+
+    canvas {
+      width: 100%;
+      height: 100%;
+      display: block;
+      touch-action: none;
+    }
+
+    .panel {
+      border-left: 2px solid #9aa7b8;
+      background: var(--panel);
+      padding: 22px 22px 18px;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+      overflow: auto;
+    }
+
+    .title {
+      font: 700 22px Georgia, "Times New Roman", serif;
+      color: #33353a;
+      line-height: 1.15;
+    }
+
+    .equation {
+      font: italic 700 24px Georgia, "Times New Roman", serif;
+      color: #33353a;
+      line-height: 1.55;
+      background: rgba(255,255,255,.7);
+      border: 1px solid #d9e1ee;
+      border-radius: 8px;
+      padding: 12px 14px;
+    }
+
+    .equation .original { color: var(--blue); }
+    .equation .moved { color: var(--orange); }
+
+    .control {
+      display: grid;
+      gap: 8px;
+    }
+
+    .control label {
+      font: 700 20px Georgia, "Times New Roman", serif;
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      color: #3c3d42;
+    }
+
+    .value {
+      color: var(--pink);
+      font-size: 26px;
+    }
+
+    input[type="range"] {
+      width: 100%;
+      height: 34px;
+      margin: 0;
+      accent-color: var(--pink);
+      touch-action: pan-y;
+    }
+
+    .readout {
+      margin-top: auto;
+      display: grid;
+      gap: 12px;
+      font: 600 17px "Segoe UI", Arial, sans-serif;
+      color: #3b4050;
+      line-height: 1.35;
+    }
+
+    .pill {
+      border-radius: 8px;
+      background: #fff;
+      border: 1px solid #d9e1ee;
+      padding: 10px 12px;
+    }
+
+    button {
+      border: 0;
+      border-radius: 6px;
+      padding: 12px 14px;
+      background: #244794;
+      color: white;
+      font: 800 18px "Segoe UI", Arial, sans-serif;
+      cursor: pointer;
+    }
+
+    button:active { transform: translateY(1px); }
+
+    @media (max-width: 850px) {
+      .applet {
+        height: 100vh;
+        grid-template-columns: 1fr;
+        grid-template-rows: minmax(0, 1fr) auto;
+      }
+      .panel {
+        border-left: 0;
+        border-top: 2px solid #9aa7b8;
+        max-height: 310px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="applet" aria-label="Combined horizontal and vertical translation applet">
+    <section class="stage">
+      <canvas id="graph"></canvas>
+    </section>
+    <aside class="panel">
+      <div class="title">Horizontal and Vertical Translation</div>
+
+      <div class="equation">
+        <div class="original">y = f(x)</div>
+        <div class="moved">y = f(x - a) + b</div>
+      </div>
+
+      <div class="control">
+        <label for="aSlider">horizontal shift a <span class="value" id="aValue">0.0</span></label>
+        <input id="aSlider" type="range" min="-5" max="5" step="0.1" value="0" />
+      </div>
+
+      <div class="control">
+        <label for="bSlider">vertical shift b <span class="value" id="bValue">0.0</span></label>
+        <input id="bSlider" type="range" min="-5" max="5" step="0.1" value="0" />
+      </div>
+
+      <button id="resetBtn" type="button">Reset</button>
+
+      <div class="readout">
+        <div class="pill" id="ruleText">No translation: every point stays at the same location.</div>
+        <div class="pill" id="pointText">(x, y) maps to (x + a, y + b)</div>
+      </div>
+    </aside>
+  </main>
+
+  <script>
+    const canvas = document.getElementById("graph");
+    const ctx = canvas.getContext("2d");
+    const aSlider = document.getElementById("aSlider");
+    const bSlider = document.getElementById("bSlider");
+    const aValue = document.getElementById("aValue");
+    const bValue = document.getElementById("bValue");
+    const ruleText = document.getElementById("ruleText");
+    const pointText = document.getElementById("pointText");
+    const resetBtn = document.getElementById("resetBtn");
+
+    const state = {
+      a: 0,
+      b: 0,
+      sampleX: 0.9,
+      draggingPoint: false,
+      dpr: 1,
+      rect: null,
+      scale: 1,
+      xMin: -6,
+      xMax: 6,
+      yMin: -4,
+      yMax: 4
+    };
+
+    function f(x) {
+      return 1.15 * Math.exp(-3.2 * (x + 1.05) ** 2)
+        - 0.35 * Math.exp(-9.5 * (x + 0.22) ** 2)
+        + 1.05 * Math.exp(-3.0 * (x - 0.98) ** 2)
+        - 0.08 * Math.sin(1.8 * x);
+    }
+
+    function resize() {
+      state.dpr = Math.max(1, window.devicePixelRatio || 1);
+      const rect = canvas.getBoundingClientRect();
+      canvas.width = Math.round(rect.width * state.dpr);
+      canvas.height = Math.round(rect.height * state.dpr);
+      ctx.setTransform(state.dpr, 0, 0, state.dpr, 0, 0);
+      state.rect = rect;
+
+      const pad = { left: 58, right: 34, top: 28, bottom: 44 };
+      const usableW = rect.width - pad.left - pad.right;
+      const usableH = rect.height - pad.top - pad.bottom;
+      const xUnits = state.xMax - state.xMin;
+      const yUnits = state.yMax - state.yMin;
+      state.scale = Math.min(usableW / xUnits, usableH / yUnits);
+      const actualW = state.scale * xUnits;
+      const actualH = state.scale * yUnits;
+      state.pad = {
+        left: pad.left + (usableW - actualW) / 2,
+        right: pad.right,
+        top: pad.top + (usableH - actualH) / 2,
+        bottom: pad.bottom
+      };
+      draw();
+    }
+
+    function sx(x) {
+      return state.pad.left + (x - state.xMin) * state.scale;
+    }
+
+    function sy(y) {
+      return state.pad.top + (state.yMax - y) * state.scale;
+    }
+
+    function wx(px) {
+      return state.xMin + (px - state.pad.left) / state.scale;
+    }
+
+    function drawGrid() {
+      const { xMin, xMax, yMin, yMax } = state;
+      ctx.clearRect(0, 0, canvas.clientWidth, canvas.clientHeight);
+      ctx.lineCap = "round";
+      ctx.lineJoin = "round";
+
+      for (let x = Math.ceil(xMin * 2) / 2; x <= xMax + 1e-9; x += 0.5) {
+        ctx.beginPath();
+        ctx.strokeStyle = Number.isInteger(x) ? getComputedStyle(document.documentElement).getPropertyValue("--grid-strong") : getComputedStyle(document.documentElement).getPropertyValue("--grid");
+        ctx.lineWidth = Number.isInteger(x) ? 1.4 : 0.8;
+        ctx.moveTo(sx(x), sy(yMin));
+        ctx.lineTo(sx(x), sy(yMax));
+        ctx.stroke();
+      }
+
+      for (let y = Math.ceil(yMin * 2) / 2; y <= yMax + 1e-9; y += 0.5) {
+        ctx.beginPath();
+        ctx.strokeStyle = Number.isInteger(y) ? getComputedStyle(document.documentElement).getPropertyValue("--grid-strong") : getComputedStyle(document.documentElement).getPropertyValue("--grid");
+        ctx.lineWidth = Number.isInteger(y) ? 1.4 : 0.8;
+        ctx.moveTo(sx(xMin), sy(y));
+        ctx.lineTo(sx(xMax), sy(y));
+        ctx.stroke();
+      }
+
+      drawAxis(xMin, xMax, 0, "x");
+      drawAxis(yMin, yMax, 1, "y");
+    }
+
+    function drawAxis(min, max, orientation, label) {
+      ctx.save();
+      ctx.strokeStyle = "#373737";
+      ctx.fillStyle = "#373737";
+      ctx.lineWidth = 3;
+      ctx.font = "22px Georgia, 'Times New Roman', serif";
+      if (orientation === 0) {
+        const y = sy(0);
+        ctx.beginPath();
+        ctx.moveTo(sx(state.xMin), y);
+        ctx.lineTo(sx(state.xMax) - 8, y);
+        ctx.stroke();
+        drawArrow(sx(state.xMax) - 8, y, 0, "#373737");
+        drawLabel(label, sx(state.xMax) - 12, y - 18, 30);
+        for (let x = Math.ceil(state.xMin); x <= state.xMax; x++) {
+          if (x === 0) continue;
+          ctx.fillText(String(x), sx(x) - 5, y + 24);
+        }
+      } else {
+        const x = sx(0);
+        ctx.beginPath();
+        ctx.moveTo(x, sy(state.yMin));
+        ctx.lineTo(x, sy(state.yMax) + 8);
+        ctx.stroke();
+        drawArrow(x, sy(state.yMax) + 8, -Math.PI / 2, "#373737");
+        drawLabel(label, x + 14, sy(state.yMax) + 30, 30);
+        for (let y = Math.ceil(state.yMin); y <= state.yMax; y++) {
+          if (y === 0) continue;
+          ctx.fillText(String(y), x - 28, sy(y) + 7);
+        }
+      }
+      ctx.restore();
+    }
+
+    function drawArrow(x, y, angle, color) {
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate(angle);
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.lineTo(-18, -8);
+      ctx.lineTo(-18, 8);
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+    }
+
+    function drawLabel(text, x, y, size = 24, color = "#333") {
+      ctx.save();
+      ctx.fillStyle = color;
+      ctx.font = `italic 700 ${size}px Georgia, 'Times New Roman', serif`;
+      ctx.fillText(text, x, y);
+      ctx.restore();
+    }
+
+    function plotCurve(transform, color, width) {
+      ctx.save();
+      ctx.strokeStyle = color;
+      ctx.lineWidth = width;
+      ctx.beginPath();
+      let started = false;
+      const steps = 900;
+      for (let i = 0; i <= steps; i++) {
+        const x = state.xMin + (state.xMax - state.xMin) * i / steps;
+        const y = transform(x);
+        if (!Number.isFinite(y) || y < state.yMin - 2 || y > state.yMax + 2) {
+          started = false;
+          continue;
+        }
+        const px = sx(x);
+        const py = sy(y);
+        if (!started) {
+          ctx.moveTo(px, py);
+          started = true;
+        } else {
+          ctx.lineTo(px, py);
+        }
+      }
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    function dashedLine(x1, y1, x2, y2, color) {
+      ctx.save();
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 2.6;
+      ctx.setLineDash([8, 7]);
+      ctx.beginPath();
+      ctx.moveTo(sx(x1), sy(y1));
+      ctx.lineTo(sx(x2), sy(y2));
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    function drawPoint(x, y, fill, ring = false) {
+      ctx.save();
+      ctx.beginPath();
+      ctx.fillStyle = fill;
+      ctx.strokeStyle = "#1b1b1b";
+      ctx.lineWidth = 2;
+      ctx.arc(sx(x), sy(y), 8, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      if (ring) {
+        ctx.beginPath();
+        ctx.strokeStyle = fill;
+        ctx.globalAlpha = 0.45;
+        ctx.lineWidth = 5;
+        ctx.arc(sx(x), sy(y), 17, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+
+    function drawMapping() {
+      const x = state.sampleX;
+      const y = f(x);
+      const tx = x + state.a;
+      const ty = y + state.b;
+
+      if (tx < state.xMin || tx > state.xMax || ty < state.yMin || ty > state.yMax) return;
+
+      dashedLine(x, y, tx, y, "#606060");
+      dashedLine(tx, y, tx, ty, "#606060");
+      drawArrow(sx(tx), sy(y), state.a >= 0 ? 0 : Math.PI, "#606060");
+      drawArrow(sx(tx), sy(ty), state.b >= 0 ? -Math.PI / 2 : Math.PI / 2, "#606060");
+
+      drawPoint(x, y, "#6d3aa0", true);
+      drawPoint(tx, ty, "#efa042", true);
+
+      const labelX = Math.min(Math.max(sx(tx) + 12, 12), canvas.clientWidth - 160);
+      const labelY = Math.min(Math.max(sy(ty) - 14, 34), canvas.clientHeight - 16);
+      ctx.save();
+      ctx.fillStyle = "rgba(255,255,255,.78)";
+      ctx.fillRect(labelX - 6, labelY - 27, 132, 44);
+      ctx.fillStyle = "#333";
+      ctx.font = "18px Georgia, 'Times New Roman', serif";
+      ctx.fillText(`(${tx.toFixed(2)},`, labelX, labelY - 8);
+      ctx.fillText(`${ty.toFixed(2)})`, labelX, labelY + 13);
+      ctx.restore();
+    }
+
+    function drawAnnotations() {
+      drawLabel("y = f(x)", sx(0.8), sy(0.92), 24, getComputedStyle(document.documentElement).getPropertyValue("--blue"));
+      drawLabel(`y = f(x ${state.a < 0 ? "+" : "-"} ${Math.abs(state.a).toFixed(1)}) ${state.b < 0 ? "-" : "+"} ${Math.abs(state.b).toFixed(1)}`,
+        sx(1.32), sy(2.1), 23, getComputedStyle(document.documentElement).getPropertyValue("--orange"));
+    }
+
+    function draw() {
+      drawGrid();
+      plotCurve(x => f(x), getComputedStyle(document.documentElement).getPropertyValue("--blue"), 4);
+      plotCurve(x => f(x - state.a) + state.b, getComputedStyle(document.documentElement).getPropertyValue("--orange"), 4);
+      drawMapping();
+      drawAnnotations();
+      updateText();
+    }
+
+    function updateText() {
+      aValue.textContent = state.a.toFixed(1);
+      bValue.textContent = state.b.toFixed(1);
+      const h = state.a === 0 ? "no horizontal shift" : `${Math.abs(state.a).toFixed(1)} units ${state.a > 0 ? "right" : "left"}`;
+      const v = state.b === 0 ? "no vertical shift" : `${Math.abs(state.b).toFixed(1)} units ${state.b > 0 ? "up" : "down"}`;
+      ruleText.textContent = `The graph shifts ${h} and ${v}.`;
+      const x = state.sampleX;
+      const y = f(x);
+      pointText.textContent = `(${x.toFixed(2)}, ${y.toFixed(2)}) maps to (${(x + state.a).toFixed(2)}, ${(y + state.b).toFixed(2)}).`;
+    }
+
+    function setA(value) {
+      state.a = Number(value);
+      draw();
+    }
+
+    function setB(value) {
+      state.b = Number(value);
+      draw();
+    }
+
+    aSlider.addEventListener("input", event => setA(event.target.value));
+    bSlider.addEventListener("input", event => setB(event.target.value));
+
+    resetBtn.addEventListener("click", () => {
+      aSlider.value = "0";
+      bSlider.value = "0";
+      state.a = 0;
+      state.b = 0;
+      state.sampleX = 0.9;
+      draw();
+    });
+
+    function pointerToCanvas(event) {
+      const rect = canvas.getBoundingClientRect();
+      return {
+        x: event.clientX - rect.left,
+        y: event.clientY - rect.top
+      };
+    }
+
+    canvas.addEventListener("pointerdown", event => {
+      const p = pointerToCanvas(event);
+      const px = sx(state.sampleX);
+      const py = sy(f(state.sampleX));
+      const dist = Math.hypot(p.x - px, p.y - py);
+      if (dist < 28) {
+        state.draggingPoint = true;
+        canvas.setPointerCapture(event.pointerId);
+      }
+    });
+
+    canvas.addEventListener("pointermove", event => {
+      if (!state.draggingPoint) return;
+      const p = pointerToCanvas(event);
+      state.sampleX = Math.max(state.xMin + 0.25, Math.min(state.xMax - 0.25, wx(p.x)));
+      draw();
+    });
+
+    canvas.addEventListener("pointerup", event => {
+      state.draggingPoint = false;
+      try { canvas.releasePointerCapture(event.pointerId); } catch (error) {}
+    });
+
+    canvas.addEventListener("pointercancel", () => {
+      state.draggingPoint = false;
+    });
+
+    window.addEventListener("resize", resize);
+    resize();
+  </script>
+</body>
+</html>
